@@ -17,6 +17,7 @@ from fastapi import APIRouter, HTTPException, Form, Query, Body, Request, Respon
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
 from core.database import SessionLocal, ModelEndpoint, Session as DbSession
+from core.log_safety import redact_url as _redact_url_for_log
 from core.middleware import require_admin
 from src.llm_core import _detect_provider, _host_match, ANTHROPIC_MODELS
 from src.tls_overrides import llm_verify
@@ -582,18 +583,6 @@ def _safe_build_headers(api_key: Optional[str], base_url: str) -> dict:
         return {"Authorization": f"Bearer {api_key}"} if api_key else {}
 
 
-def _redact_url_for_log(url: str) -> str:
-    """Return a URL safe for logs by removing userinfo and query/fragment."""
-    try:
-        parsed = urlparse(url or "")
-        host = parsed.hostname or ""
-        if parsed.port:
-            host = f"{host}:{parsed.port}"
-        return urlunparse((parsed.scheme, host, parsed.path, "", "", ""))
-    except Exception:
-        return "<endpoint>"
-
-
 def _is_discovery_only_provider(provider: str) -> bool:
     return provider == "chatgpt-subscription"
 
@@ -810,9 +799,9 @@ def _probe_endpoint(base_url: str, api_key: str = None, timeout: int = 5) -> Lis
         logger.warning("Failed to probe %s: %s", _redact_url_for_log(url), e)
     except Exception as e:
         if api_key:
-            logger.warning(f"Failed to probe {url} with API key: {e}")
+            logger.warning("Failed to probe %s with API key: %s", _redact_url_for_log(url), e)
             return []
-        logger.warning(f"Failed to probe {url}: {e}")
+        logger.warning("Failed to probe %s: %s", _redact_url_for_log(url), e)
 
     # Older Ollama builds and some proxies expose native /api/tags even when
     # the OpenAI-compatible /v1/models path is unavailable.
@@ -2119,6 +2108,16 @@ def setup_model_routes(model_discovery):
             ep_id = (_user_prefs.get("default_endpoint_id") or "").strip()
             model = (_user_prefs.get("default_model") or "").strip()
             _fallbacks = _user_prefs.get("default_model_fallbacks") or []
+            # If user has no personal default, fall back to global default
+            # But only based on the "share_defaults_with_users" flag
+            # (only if share_defaults_with_users is enabled)
+            if settings.get("share_defaults_with_users", False):
+                if not ep_id:
+                    ep_id = settings.get("default_endpoint_id", "")
+                if not model:
+                    model = settings.get("default_model", "")
+                if not _fallbacks:
+                    _fallbacks = settings.get("default_model_fallbacks") or []
         else:
             ep_id = settings.get("default_endpoint_id", "")
             model = settings.get("default_model", "")
