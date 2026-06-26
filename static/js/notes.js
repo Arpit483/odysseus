@@ -2591,19 +2591,41 @@ function _bindCardEvents(body) {
     });
   });
 
-  // Double click text to edit
+  // Double click text to edit, and prevent first click from toggling
   body.querySelectorAll('.note-check-text').forEach(span => {
+    let clickTimeout = null;
+
     span.addEventListener('dblclick', (e) => {
       e.stopPropagation();
+      if (clickTimeout) {
+        clearTimeout(clickTimeout);
+        clickTimeout = null;
+      }
       if (_selectMode) return;
       const parent = span.closest('.note-checkbox');
+      if (!parent) return;
       const noteId = parent.dataset.noteId;
       const idx = parseInt(parent.dataset.idx);
       _startChecklistItemEdit(noteId, idx, span);
     });
+
     span.addEventListener('click', (e) => {
       if (span.isContentEditable) {
         e.stopPropagation();
+        return;
+      }
+      e.stopPropagation(); // prevent immediate bubble to .note-checkbox
+      
+      if (clickTimeout) {
+        // We are already waiting for a double click, ignore the second click
+      } else {
+        clickTimeout = setTimeout(() => {
+          clickTimeout = null;
+          const parent = span.closest('.note-checkbox');
+          if (parent && !span.isContentEditable) {
+            parent.click(); // Dispatch toggle manually
+          }
+        }, 250);
       }
     });
   });
