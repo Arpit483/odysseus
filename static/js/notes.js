@@ -2541,12 +2541,26 @@ function _bindCardEvents(body) {
       if (!span.isContentEditable) return;
       span.contentEditable = "false";
       const newText = span.textContent.trim();
-      if (newText !== (note.items[idx].text || '').trim()) {
-        note.items[idx].text = newText;
-        _patchNote(noteId, { items: note.items }).catch(() => {
-          uiModule.showError('Failed to update item');
-        });
+      const oldText = (note.items[idx].text || '').trim();
+      
+      if (newText === oldText) {
+        _renderNotes();
+        return;
       }
+
+      const oldItem = note.items[idx];
+      if (!newText) {
+        note.items.splice(idx, 1);
+      } else {
+        note.items[idx].text = newText;
+      }
+
+      _patchNote(noteId, { items: note.items }).catch(() => {
+        if (!newText) note.items.splice(idx, 0, oldItem);
+        else note.items[idx].text = oldText;
+        _renderNotes();
+        uiModule.showError('Failed to update item');
+      });
       _renderNotes();
     };
 
