@@ -868,6 +868,9 @@ def setup_chat_routes(
         finally:
             _doc_db.close()
 
+        _explicit_web_intent = bool(
+            _tool_intent and _tool_intent.needs_tools and _tool_intent.category == "web"
+        )
         # Build disabled-tools set from frontend toggles + user privileges
         disabled_tools = set()
         # Only disable bash/web_search when the caller *explicitly* set them
